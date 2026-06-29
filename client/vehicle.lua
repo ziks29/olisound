@@ -21,6 +21,15 @@ local function isDoorOpen(vehicle)
     return false
 end
 
+local function isWindowOpen(vehicle)
+    if not DoesEntityExist(vehicle) then return false end
+    if not GetVehicleWindowRollUpRatio then return false end
+    for i = 0, 3 do
+        if GetVehicleWindowRollUpRatio(vehicle, i) < 0.95 then return true end
+    end
+    return false
+end
+
 local function isWindowBroken(vehicle)
     if not DoesEntityExist(vehicle) then return false end
     local count = GetNumberOfVehicleDoors(vehicle)
@@ -29,6 +38,10 @@ local function isWindowBroken(vehicle)
         if not IsVehicleWindowIntact(vehicle, i) then return true end
     end
     return false
+end
+
+local function isCabinOpen(vehicle)
+    return isDoorOpen(vehicle) or isWindowBroken(vehicle) or isWindowOpen(vehicle)
 end
 
 CreateThread(function()
@@ -62,14 +75,18 @@ CreateThread(function()
                     SendNUIMessage({ status = "disablePanning", name = name, disabled = true })
                 else
                     SendNUIMessage({ status = "muffle", name = name, enabled = true, frequency = Config.occlusionFilterFrequency })
-                    SendNUIMessage({ status = "vehicleGain", name = name, gain = Config.otherVehicleVolume or 0.4 })
+                    SendNUIMessage({ status = "vehicleGain", name = name, gain = Config.otherVehicleVolume or 0.4, ytMuffle = Config.youtubeMuffleMultiplier })
                     SendNUIMessage({ status = "disablePanning", name = name, disabled = false })
                 end
             elseif not isInVehicle then
-                -- Always muffle when outside to ensure consistency and prevent "missing muffle" bugs 
-                -- caused by windows rolling down or doors left slightly ajar.
-                SendNUIMessage({ status = "muffle", name = name, enabled = true, frequency = Config.outsideVehicleMuffleFrequency })
-                SendNUIMessage({ status = "vehicleGain", name = name, gain = Config.outsideVehicleVolume or 0.5 })
+                local cabinOpen = Config.unmuteWhenCabinOpen and info.vehicleEntity and isCabinOpen(info.vehicleEntity)
+                if cabinOpen then
+                    SendNUIMessage({ status = "muffle", name = name, enabled = false })
+                    SendNUIMessage({ status = "vehicleGain", name = name, gain = Config.outsideVehicleVolumeOpen or 1.0 })
+                else
+                    SendNUIMessage({ status = "muffle", name = name, enabled = true, frequency = Config.outsideVehicleMuffleFrequency })
+                    SendNUIMessage({ status = "vehicleGain", name = name, gain = Config.outsideVehicleVolume or 0.5, ytMuffle = Config.youtubeMuffleMultiplier })
+                end
                 SendNUIMessage({ status = "disablePanning", name = name, disabled = false })
             end
 

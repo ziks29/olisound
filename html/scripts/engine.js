@@ -57,6 +57,7 @@ class SoundInstance {
         this.isYoutube = false;
         this.ytPlayer = null;
         this.ytReady = false;
+        this.ytPendingSeek = null;
         this.ytDivId = 'yt_' + instanceCounter++;
         this.ytPollTimer = null;
 
@@ -180,6 +181,10 @@ class SoundInstance {
                         e.target.unMute();
                         e.target.setVolume(0);
                         e.target.playVideo();
+                        if (this.ytPendingSeek !== null) {
+                            e.target.seekTo(this.ytPendingSeek, true);
+                            this.ytPendingSeek = null;
+                        }
 
                         const dur = e.target.getDuration();
                         if (dur > 0) {
@@ -309,8 +314,11 @@ class SoundInstance {
         this._applyGain(Math.max(0, this.maxVolume * ratio));
     }
 
-    setVehicleGain(multiplier) {
-        this.vehicleGainMultiplier = Math.max(0, Math.min(1, multiplier));
+    setVehicleGain(multiplier, ytMuffle) {
+        // YouTube can't use the lowpass filter, so apply extra volume reduction when muffled
+        const factor = (typeof ytMuffle === 'number') ? ytMuffle : 0.5;
+        const effective = (this.isYoutube && multiplier < 1.0) ? multiplier * factor : multiplier;
+        this.vehicleGainMultiplier = Math.max(0, Math.min(1, effective));
         if (this.isYoutube && this.ytReady && this.ytPlayer) this._ytApplyVolume();
     }
 
@@ -362,8 +370,12 @@ class SoundInstance {
     // ── Timestamp ──
 
     setTimeStamp(time) {
-        if (this.isYoutube && this.ytReady && this.ytPlayer) {
-            this.ytPlayer.seekTo(time, true);
+        if (this.isYoutube) {
+            if (this.ytReady && this.ytPlayer) {
+                this.ytPlayer.seekTo(time, true);
+            } else {
+                this.ytPendingSeek = time;
+            }
         } else if (this.audio) {
             try { this.audio.currentTime = time; } catch (e) {}
         }
@@ -769,7 +781,7 @@ window.addEventListener('message', function (event) {
 
         case 'vehicleGain':
             s = soundManager.get(d.name);
-            if (s) { s.setVehicleGain(d.gain); s.updateVolumeByDistance(soundManager.playerPos); }
+            if (s) { s.setVehicleGain(d.gain, d.ytMuffle); s.updateVolumeByDistance(soundManager.playerPos); }
             break;
             
         case 'disablePanning':
